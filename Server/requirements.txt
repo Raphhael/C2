@@ -1,0 +1,13 @@
+python-magic
+python-libmagic
+
+# Ubuntu
+libmagic1
+
+# Windows
+python-magic-bin
+python-magic-win64
+
+# Mac
+libmagic
+file
