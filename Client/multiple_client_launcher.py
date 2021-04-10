@@ -1,6 +1,10 @@
+"""
+Start multiple fake clients for testing purpose
+"""
+
 import os
-import signal
 import sys
+from signal import signal, Signals, SIGTERM, SIGINT
 
 if len(sys.argv) > 1 and sys.argv[1].isdigit():
     N_CLIENTS = int(sys.argv[1])
@@ -10,23 +14,29 @@ else:
 print("nb clients :", N_CLIENTS)
 
 os.makedirs("logs", exist_ok=True)
-pids = [0] * N_CLIENTS
-command = "./venv/bin/python3 client.py".split()
+PIDS = [0] * N_CLIENTS
+COMMAND = "./venv/bin/python3 client.py -t 127.0.0.1:9999".split()
 
 
 def kill_handler(sig, frame=None):
-    print("Receive signal", sig, signal.Signals(sig).name)
-    for pid in pids:
-        if pid:
+    """ On kill, kill also all clients
+
+    Args:
+        sig (int): Signal
+        frame: required
+    """
+    print("Receive signal", sig, Signals(sig).name)
+    for child_pid in PIDS:
+        if child_pid:
             try:
-                print("kill", pid)
-                os.kill(pid, signal.SIGTERM)
+                print("kill", child_pid)
+                os.kill(child_pid, SIGTERM)
             except ProcessLookupError:
                 pass
 
 
-signal.signal(signal.SIGTERM, kill_handler)
-signal.signal(signal.SIGINT, kill_handler)
+signal(SIGTERM, kill_handler)
+signal(SIGINT, kill_handler)
 
 for i in range(N_CLIENTS):
     pid = os.fork()
@@ -35,12 +45,12 @@ for i in range(N_CLIENTS):
         with open(f"./logs/logs_{i}.log", "w") as file:
             os.dup2(file.fileno(), sys.stdout.fileno())
             os.dup2(file.fileno(), sys.stderr.fileno())
-            os.execv(command[0], command)
-        exit(0)
+            os.execv(COMMAND[0], COMMAND)
+        sys.exit(0)
     else:
-        pids[i] = pid
+        PIDS[i] = pid
 
-for pid in pids:
+for pid in PIDS:
     print("Waiting", pid)
     os.waitpid(pid, 0)
 print("End")

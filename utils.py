@@ -1,33 +1,67 @@
+"""
+This module provide utility functions for C2 Client and C2 Server.
+
+"""
 import inspect
 import logging
 from io import SEEK_END, BufferedIOBase, BytesIO
 from socket import socket
 
 
-class C2SocketError(Exception): pass
+class C2SocketError(Exception):
+    """ Base class for C2Socket Errors """
 
 
-class RemoteDisconnected(C2SocketError): pass
+class RemoteDisconnected(C2SocketError):
+    """ Other side is disconnected """
 
 
-class ReadError(C2SocketError): pass
+class ReadError(C2SocketError):
+    """ An error occurs during socket read operation """
 
 
-class SendError(C2SocketError): pass
+class SendError(C2SocketError):
+    """ An error occurs during socket write operation """
 
 
 class C2Socket:
-    RECV_BUFFER_SIZE = 128_000
-    SEND_BUFFER_SIZE = 64_000
+    """ Class providing useful methods for communication between server and client.
+
+    Attributes:
+        RECV_BUFFER_SIZE (bytes): TCP buffer size for read op
+        SEND_BUFFER_SIZE (bytes): TCP buffer size for write op
+
+    Notes:
+        The client / server communication is done with simple packet structed like :
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        |                          Data length                          |
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+        |                                                               |
+        +                         Variable Data                         +
+        |                                                               |
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    """
+    _RECV_BUFFER_SIZE = 128_000
+    _SEND_BUFFER_SIZE = 64_000
 
     def __init__(self, ip, port, sock: socket = None):
-        self.ip = ip
+        """ Create a socket and connect to destination ip:port.
+
+        If sock parameter is given, it must be a valid connected socket.
+
+        Args:
+            ip (str): Destination IP
+            port (int): Destination port
+            sock (socket): Valid connected socket
+        """
+        self.ip_address = ip
         self.port = port
-        self.remote = ip, port
         if not sock:
             self.sock = socket()
-            self.sock.connect(self.remote)
-            logging.debug(f"{self} : Connected to {self.sock.getpeername()}")
+            self.sock.connect((ip, port))
+            logging.debug("%s : Connected", self)
         else:
             self.sock = sock
 
@@ -35,78 +69,89 @@ class C2Socket:
         return self
 
     def __exit__(self, *args):
-        logging.debug(f"{self} : __exit__ called")
+        logging.debug("%s : __exit__ called", self)
         self.sock.close()
 
     def __repr__(self):
-        return f"Socket<{self.remote}>"
+        return f"Socket<{self.ip_address}:{self.port}>"
 
-    def read(self, n, writer_io=None):
-        """ Read n bytes on socket, blocking method
+    def _read(self, length, writer_io=None):
+        """ Read n bytes on socket
 
         Args:
-            n (int): length of bytes to read
-            writer_io: function executed at each read which take data buffer
+            length (int): length of bytes to read
+            writer_io (BufferedIOBase): Buffer to write data read on socket. If None, all data is stored in a variable
 
-        Returns (bytes): Data read if no `buffer_callback` else number of bytes read
+        Returns (bytes): Data read if `writer_io` is None, else total number of bytes read
+
+        Raises:
+            RemoteDisconnected: Blocking read 0 bytes => remote disconnected
+            ReadError: Read unattended amount of data
 
         """
-        logging.debug(f"{self} : read({n}, {writer_io})")
+        logging.debug("%s : read(%s, %s)", self, length, writer_io)
         buffer_writer = writer_io or BytesIO()
         i = 0
 
-        while i < n:
-            buffer_len = min(C2Socket.RECV_BUFFER_SIZE, n - i)
+        while i < length:
+            buffer_len = min(C2Socket._RECV_BUFFER_SIZE, length - i)
             buffer = self.sock.recv(buffer_len)
 
             if len(buffer) == 0:
                 raise RemoteDisconnected("Read 0 bytes. Disconnected")
-            elif len(buffer) > buffer_len:
+            if len(buffer) > buffer_len:
                 raise ReadError(f"Read {len(buffer)} bytes, not {buffer_len} bytes. Disconnected")
 
             buffer_writer.write(buffer)
             i += len(buffer)
 
-        logging.debug(f"{self} : read({n}), read={i}")
+        logging.debug("%s : read(%s), read=%s", self, length, i)
 
         if writer_io:
             return i
-        else:
-            buffer_writer.seek(0)
-            return buffer_writer.read()
+        buffer_writer.seek(0)
+        return buffer_writer.read()
 
-    def read_into_file(self, file):
-        file_len = self.read_int()
-        self.read(file_len, file)
+    def _send_int(self, integer):
+        """ Send an integer
 
-    def read_int(self):
-        """ Read next integer
+        Args:
+            integer (int): the int
+        """
+        encoded = integer.to_bytes(4, 'big')
+        self.sock.send(encoded)
+        logging.debug("%s : Send integer %s (%s)", self, integer, encoded)
+
+    def _read_int(self):
+        """ Read an integer
 
         Returns (int): The next integer
 
         """
-        data = self.read(4)
+        data = self._read(4)
         return int.from_bytes(data, 'big')
 
+    def read_into_file(self, file):
+        """ Convenience function to receive remote file in buffered io object
+
+        Args:
+            file (BufferedIOBase): Local file we want to write
+
+        """
+        file_len = self._read_int()
+        self._read(file_len, file)
+
     def read_packet(self):
-        """"""
-        logging.debug(f"{self} : read_packet")
-        pkt_len = self.read_int()
-        logging.debug(f"{self} : read_packet of len {pkt_len}")
-        pkt_data = self.read(pkt_len)
-        logging.debug(f"{self} : read_packet : {pkt_data[:100]}")
+        """ Read packet and returns data
+
+        Returns (bytes): The data
+        """
+        logging.debug("%s : read_packet", self)
+        pkt_len = self._read_int()
+        logging.debug("%s : read_packet of len %s", self, pkt_len)
+        pkt_data = self._read(pkt_len)
+        logging.debug("%s : read_packet : %s", self, pkt_data[:100])
         return pkt_data
-
-    def read_command(self):
-        logging.debug(f"{self} : read_command")
-        command = self.read_packet().decode()
-        logging.debug(f"{self} : read_command : {command}")
-        return command
-
-    def send_int(self, integer):
-        encoded = integer.to_bytes(4, 'big')
-        self.sock.send(encoded)
-        logging.debug(f"{self} : Send integer {integer} ({encoded})")
 
     def send_file(self, file):
         """ Send file
@@ -116,29 +161,58 @@ class C2Socket:
 
         Returns (bool): True if no errors
 
+        Notes:
+            File needs to be seekable
+            File is sent from beginning (offset 0)
         """
-        length = file.seek(0, SEEK_END)
         try:
-            self.send_int(length)
+            length = file.seek(0, SEEK_END)
+            self._send_int(length)
             file.seek(0)
             return length == self.sock.sendfile(file)
-        except OSError as e:
-            raise SendError(f"{self} : send_file raise exception %s : %s" % (type(e), e))
+        except OSError as err:
+            raise SendError(f"{self} : send_file raise exception {type(err)} : {err}")
 
     def send_packet(self, data):
-        logging.debug(f"{self} : send_packet, data of len {len(data)}")
+        """ Send packet
+
+        Args:
+            data (bytes): Data to send
+
+        Returns (bool): True if success
+
+        """
+        logging.debug("%s : send_packet, data of len %s", self, len(data))
         payload = len(data).to_bytes(4, 'big') + data
         try:
             if self.sock.sendall(payload) is not None:
                 raise SendError()
-            logging.debug(f"{self} : send_packet, total len {len(payload)}")
+            logging.debug("%s : send_packet, total len %s", self, len(payload))
             return True
-        except OSError as e:
-            raise SendError("Error sending payload of length %s : %s : %s" % (len(data), type(e), e))
+        except OSError as err:
+            raise SendError(f"Error sending payload of length {len(data)} : {type(err)} : {err}")
 
 
 class Commands:
+    """ Base class for executing commands
+
+    Notes :
+        To add a command, just add a method ending by `_command` (for example : test_command),
+        with the attempted parameters.
+
+        To execute a command, create an instance of this object, then execute method `is_valid` then `execute` method.
+
+    """
+
     def __init__(self, sock: C2Socket, cmd, params, raw_input):
+        """
+
+        Args:
+            sock (socket): Remote host
+            cmd (str): Command name
+            params (list[str]): List of parameters
+            raw_input (str): user input
+        """
         self.sock = sock
         self.cmd = cmd
         self.params = params
@@ -147,8 +221,13 @@ class Commands:
         self.input = content[0] if content else ''
 
     def is_valid(self):
+        """ Check if the command exists and has good parameters
+
+        Returns (bool): True if no errors, False otherwise.
+
+        """
         if not self.function:
-            return
+            return False
 
         fun_params = dict(inspect.signature(self.function).parameters)
         fun_params.pop('self', None)
@@ -156,30 +235,36 @@ class Commands:
         positional = len([1 for p in fun_params.values() if p.kind == p.VAR_POSITIONAL])
 
         if len(self.params) > len(fun_params) and not positional:
-            logging.debug(f"Too much parameters for function {self.function.__name__} : {self.params}")
+            logging.debug("Too much parameters for function %s : %s", self.function.__name__, self.params)
         else:
             required_params = [fp for fp in fun_params.values() if fp.default == inspect._empty]
             missing = required_params[len(self.params):]
-            if len(missing):
-                logging.error(f"Missing parameters for function {self.function.__name__} :")
-                logging.error(f"- Given parameters : {self.params}")
-                logging.error(f"- Missing parameters : {', '.join(map(lambda p: p.name, missing))}")
+            if missing:
+                logging.error("Missing parameters for function %s{self.function.__name__} :")
+                logging.error("- Given parameters : %s", self.params)
+                logging.error("- Missing parameters : %s", ', '.join(map(lambda p: p.name, missing)))
             else:
                 return True
+        return False
 
     def get_function(self):
+        """ Get the function associated with command
+
+        Returns: Function or None if not found
+
+        """
         fct_name = f"command_{self.cmd}"
         fct = getattr(self, fct_name, None)
         if fct is not None:
             return fct
-        else:
-            logging.warning(f"Missing method {fct_name} of class Commands.")
+        logging.warning("Missing method %s of class Commands.", fct_name)
 
     def execute(self):
+        """ Execute the function """
         if not self.function:
             return
-        logging.debug(f"""Starting {self.function.__name__}("{'","'.join(self.params)}")""")
+        logging.debug("""Starting %s("%s")""", self.function.__name__, '","'.join(self.params))
         try:
             self.function(*self.params)
-        except (SendError, ReadError) as e:
-            logging.error(f"Commands.{self.function.__name__} failed because : {type(e)} {e}")
+        except (SendError, ReadError) as err:
+            logging.error("Commands.%s failed because : %s %s", self.function.__name__, type(err), err)
