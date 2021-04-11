@@ -4,18 +4,26 @@ Start multiple fake clients for testing purpose
 
 import os
 import sys
+from argparse import ArgumentParser
 from signal import signal, Signals, SIGTERM, SIGINT
 
-if len(sys.argv) > 1 and sys.argv[1].isdigit():
-    N_CLIENTS = int(sys.argv[1])
-else:
-    N_CLIENTS = 10
+parser = ArgumentParser()
+parser.add_argument('-n', '--nb-clients', default=10, type=int, help='Number of clients created')
+parser.add_argument('-t', '--target', default='127.0.0.1', help="Server IP")
+parser.add_argument('-p', '--port', default=9999, type=int, help="Server port")
+parser.add_argument('-x', '--executable', default='./venv/bin/python3', help="Python executable")
+parser.add_argument('-l', '--logs', default='./logs', help="Logs path")
+args = parser.parse_args()
 
-print("nb clients :", N_CLIENTS)
+COMMAND = f"{args.executable} client.py -t {args.target}:{args.port}".split()
 
-os.makedirs("logs", exist_ok=True)
-PIDS = [0] * N_CLIENTS
-COMMAND = "./venv/bin/python3 client.py -t 127.0.0.1:9999".split()
+print("nb de clients :", args.nb_clients)
+print("commande :", COMMAND)
+print("logs :", args.logs)
+
+os.makedirs(args.logs, exist_ok=True)
+
+PIDS = [0] * args.nb_clients
 
 
 def kill_handler(sig, frame=None):
@@ -38,11 +46,11 @@ def kill_handler(sig, frame=None):
 signal(SIGTERM, kill_handler)
 signal(SIGINT, kill_handler)
 
-for i in range(N_CLIENTS):
+for i in range(args.nb_clients):
     pid = os.fork()
     if pid <= 0:
         print("Start fils", i)
-        with open(f"./logs/logs_{i}.log", "w") as file:
+        with open(f"{args.logs}/logs_{i}.log", "a+") as file:
             os.dup2(file.fileno(), sys.stdout.fileno())
             os.dup2(file.fileno(), sys.stderr.fileno())
             os.execv(COMMAND[0], COMMAND)

