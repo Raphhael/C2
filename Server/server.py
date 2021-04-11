@@ -227,6 +227,7 @@ class ServerCommands(Commands):
     @staticmethod
     def list():
         """ Print table of actual clients """
+        clients_cleaner()
         table = Table(show_header=True, header_style="bold blue")
         table.add_column("N°")
         table.add_column("IP")
