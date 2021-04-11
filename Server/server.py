@@ -192,7 +192,7 @@ class CommandLauncher:
     def teardown_exit(self):
         """ Teardown at exit """
         LOGGER.debug("Server exit")
-        for client in CLIENTS:
+        for client in CLIENTS.values():
             LOGGER.debug("%s closed", client)
             client.__exit__()
         SERVER_THREAD.socket.close()
