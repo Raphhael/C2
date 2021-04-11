@@ -4,14 +4,12 @@ This module provide utility functions for C2 Client and C2 Server.
 """
 import inspect
 from io import SEEK_END, BufferedIOBase, BytesIO
-from logging import Formatter, DEBUG, getLogger, LoggerAdapter
+from logging import DEBUG, getLogger, LoggerAdapter
 from socket import socket
 
 # IP / PORT ADDED
-logger = getLogger('socket')
-logger.setLevel(DEBUG)
-formatter = Formatter(
-    '%(asctime)s %(name)s:%(levelname)s - %(filename)s::%(funcName)s:L%(lineno)d - %(ip)s:%(port)s - %(message)s', '%H:%M:%S')
+LOGGER = getLogger('socket')
+LOGGER.setLevel(DEBUG)
 
 
 class C2SocketError(Exception):
@@ -64,7 +62,7 @@ class C2Socket:
         """
         self.ip_address = ip
         self.port = port
-        self.logger = LoggerAdapter(logger, {'ip': ip, 'port': port})
+        self.logger = LoggerAdapter(LOGGER, {'ip': ip, 'port': port})
         if not sock:
             self.sock = socket()
             self.sock.connect((ip, port))
@@ -102,7 +100,10 @@ class C2Socket:
 
         while i < length:
             buffer_len = min(C2Socket._RECV_BUFFER_SIZE, length - i)
-            buffer = self.sock.recv(buffer_len)
+            try:
+                buffer = self.sock.recv(buffer_len)
+            except OSError as err:
+                raise RemoteDisconnected(f"Got error {type(err)} : {err}")
 
             if len(buffer) == 0:
                 raise RemoteDisconnected("Read 0 bytes. Disconnected")
