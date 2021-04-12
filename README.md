@@ -62,3 +62,8 @@ Multi-threaded server can :
 
 ![SSH and shutdown gif](https://github.com/Raphhael/C2/blob/main/img/6%20-%20check%20ssh%20and%20shutdown.gif?raw=true)
 
+---
+
+
+<small>All the assets used in README.md are stored </small>[here](https://github.com/Raphhael/C2/tree/main/img)
+
