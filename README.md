@@ -42,7 +42,7 @@ Multi-threaded server can :
 
 #### 3. Send slow commands to multiple targets
 
-![Send slow commands gif](https://github.com/Raphhael/C2/blob/main/img/3%20-%20Commands%20to%20targets.gif?raw=true)
+![Send slow commands gif](https://github.com/Raphhael/C2/blob/main/img/3%20-%20Command%20to%20lot%20of%20targets.gif?raw=true)
 
 
 
@@ -60,7 +60,7 @@ Multi-threaded server can :
 
 #### 6. Few additional tests
 
-![SSH and shutdown gif](https://github.com/Raphhael/C2/blob/main/img/6%20-%20check%20ssh%20and%20shutdown.gif?raw=true)
+![SSH and shutdown gif](https://github.com/Raphhael/C2/blob/main/img/6%20-%20Service%20and%20shutdown.gif?raw=true)
 
 ---
 
