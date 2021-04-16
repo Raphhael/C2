@@ -1,0 +1,51 @@
+<h1 id="simple-c2-client-server">Simple C2 Client / Server</h1>
+<p><img src="https://github.com/Raphhael/C2/blob/main/img/banner.min.png?raw=true" alt="banner"></p>
+<p>&raquo; <a href="https://github.com/Raphhael/C2">https://github.com/Raphhael/C2</a></p>
+<h2 id="features">Features</h2>
+<p>Multi-threaded server can :</p>
+<ul>
+<li>Upload files on client pool</li>
+<li>Download files from clients</li>
+<li>Take screenshots</li>
+<li>Execute shell commands</li>
+</ul>
+<h2 id="usage">Usage</h2>
+<h3 id="commands">Commands</h3>
+<ul>
+<li>Install requirements :<ul>
+<li><code>pip3 install -r Clients/requirements.txt</code></li>
+<li><code>pip3 install -r Server/requirements.txt</code></li>
+</ul>
+</li>
+<li>Start server :<ul>
+<li><code>cd Server &amp;&amp; python server.py</code></li>
+</ul>
+</li>
+<li>In another shell, start for example 20 clients<ul>
+<li><code>cd Client &amp;&amp; python multiple_client_launcher.py 20</code></li>
+</ul>
+</li>
+<li>Execute commands in server prompt :<ul>
+<li><code>upload &quot;example.txt&quot; &quot;client.txt&quot;</code></li>
+<li><code>download client.txt</code></li>
+<li><code>screenshot</code></li>
+<li><code>sh echo $$</code></li>
+<li><code>sh whoami</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="examples">Examples</h3>
+<h4 id="1-install-server-from-scratch">1. Install server from scratch</h4>
+<p><img src="https://github.com/Raphhael/C2/blob/main/img/1%20-%20Server%20install.gif?raw=true" alt="Install server gif"></p>
+<h4 id="2-add-some-clients">2. Add some clients</h4>
+<p><img src="https://github.com/Raphhael/C2/blob/main/img/2%20-%20Add%20clients.gif?raw=true" alt="Add clients gif"></p>
+<h4 id="3-send-slow-commands-to-multiple-targets">3. Send slow commands to multiple targets</h4>
+<p><img src="https://github.com/Raphhael/C2/blob/main/img/3%20-%20Command%20to%20lot%20of%20targets.gif?raw=true" alt="Send slow commands gif"></p>
+<h4 id="4-take-screenshots-of-clients">4. Take screenshots of clients</h4>
+<p><img src="https://github.com/Raphhael/C2/blob/main/img/4%20-%20Screenshot.gif?raw=true" alt="Screenshot gif"></p>
+<h4 id="5-upload-and-download-files">5. Upload and download files</h4>
+<p><img src="https://github.com/Raphhael/C2/blob/main/img/5%20-%20Upload%20Download.gif?raw=true" alt="Upload and download files gif"></p>
+<h4 id="6-few-additional-tests">6. Few additional tests</h4>
+<p><img src="https://github.com/Raphhael/C2/blob/main/img/6%20-%20Service%20and%20shutdown.gif?raw=true" alt="SSH and shutdown gif"></p>
+<hr>
+<p><small>All the assets used in README.md are stored </small><a href="https://github.com/Raphhael/C2/tree/main/img">here</a></p>

